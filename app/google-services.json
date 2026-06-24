@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "634602275418",
+    "project_id": "sistema-control-visitas",
+    "storage_bucket": "sistema-control-visitas.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:634602275418:android:5031c8cfc4ee4e9ed50e63",
+        "android_client_info": {
+          "package_name": "com.dmr.ocrhoneywell"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA804UKD4DdA37uf0kGyb5V7VQtCK3RLUc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
