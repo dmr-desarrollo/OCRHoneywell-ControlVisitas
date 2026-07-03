@@ -34,57 +34,218 @@
                 android:text="⚙" />
         </LinearLayout>
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cédula" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="18dp" />
-        <EditText android:id="@+id/txtCedula" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Cédula"
+            android:textColor="#374151"
+            android:textStyle="bold" />
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Fecha nacimiento" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtFecha" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
-
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Apellido 1" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtApellido1" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
-
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Apellido 2" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtApellido2" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
-
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Nombre" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtNombre" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
-
-
+        <EditText
+            android:id="@+id/txtCedula"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:inputType="number"
+            android:padding="12dp"
+            android:textColor="#111827" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Persona a visitar"
-            android:textStyle="bold"
+            android:layout_marginTop="10dp"
+            android:text="Fecha nacimiento"
             android:textColor="#374151"
-            android:layout_marginTop="10dp" />
+            android:textStyle="bold" />
 
-        <Spinner
-            android:id="@+id/spnPersonaVisitable"
+        <EditText
+            android:id="@+id/txtFecha"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:background="@android:drawable/edit_text"
-            android:padding="12dp" />
+            android:enabled="false"
+            android:hint="dd/MM/yyyy"
+            android:inputType="date"
+            android:padding="12dp"
+            android:textColor="#111827" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Apellido 1"
+            android:textColor="#374151"
+            android:textStyle="bold" />
 
+        <EditText
+            android:id="@+id/txtApellido1"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:inputType="textPersonName"
+            android:padding="12dp"
+            android:textColor="#111827" />
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Fecha lectura" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtFechaRegistro" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Apellido 2"
+            android:textColor="#374151"
+            android:textStyle="bold" />
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Hora lectura" android:textStyle="bold" android:textColor="#374151" android:layout_marginTop="10dp" />
-        <EditText android:id="@+id/txtHoraRegistro" android:layout_width="match_parent" android:layout_height="56dp" android:enabled="false" android:background="@android:drawable/edit_text" android:textColor="#111827" android:padding="12dp" />
+        <EditText
+            android:id="@+id/txtApellido2"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:inputType="textPersonName"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Nombre"
+            android:textColor="#374151"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/txtNombre"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:inputType="textPersonName"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Empresa"
+            android:textColor="#374151"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/txtEmpresa"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="true"
+            android:hint="Empresa del visitante"
+            android:inputType="textCapWords"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Persona a visitar"
+            android:textColor="#374151"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/txtPersonaVisitar"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="true"
+            android:hint="Nombre de la persona a visitar"
+            android:inputType="textCapWords"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Fecha lectura"
+            android:textColor="#374151"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/txtFechaRegistro"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Hora lectura"
+            android:textColor="#374151"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/txtHoraRegistro"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@android:drawable/edit_text"
+            android:enabled="false"
+            android:padding="12dp"
+            android:textColor="#111827" />
+
+        <Button
+            android:id="@+id/btnModoManual"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#6B7280"
+            android:text="Modo manual"
+            android:textColor="#FFFFFF" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
-            <Button android:id="@+id/btnGuardar" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:backgroundTint="#22C55E" android:text="Guardar" android:textColor="#FFFFFF" />
-            <Space android:layout_width="10dp" android:layout_height="1dp" />
-            <Button android:id="@+id/btnLimpiar" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:backgroundTint="#2563EB" android:text="Limpiar" android:textColor="#FFFFFF" />
-            <Space android:layout_width="10dp" android:layout_height="1dp" />
-            <Button android:id="@+id/btnSalir" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:backgroundTint="#DC2626" android:text="Salir" android:textColor="#FFFFFF" />
+            <Button
+                android:id="@+id/btnGuardar"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:backgroundTint="#22C55E"
+                android:text="Guardar"
+                android:textColor="#FFFFFF" />
+
+            <Space
+                android:layout_width="10dp"
+                android:layout_height="1dp" />
+
+            <Button
+                android:id="@+id/btnLimpiar"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:backgroundTint="#2563EB"
+                android:text="Limpiar"
+                android:textColor="#FFFFFF" />
+
+            <Space
+                android:layout_width="10dp"
+                android:layout_height="1dp" />
+
+            <Button
+                android:id="@+id/btnSalir"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:backgroundTint="#DC2626"
+                android:text="Salir"
+                android:textColor="#FFFFFF" />
         </LinearLayout>
 
     </LinearLayout>

@@ -1,6 +1,9 @@
 package com.dmr.ocrhoneywell;
 
 import android.app.AlertDialog;
+import android.content.Intent;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.KeyEvent;
@@ -8,47 +11,75 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import android.graphics.Color;
+import android.view.Gravity;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+import android.widget.TableLayout;
+import android.widget.TableRow;
+import android.widget.TextView;
+
 import androidx.appcompat.app.AppCompatActivity;
-import android.media.MediaScannerConnection;
+import com.google.firebase.firestore.QuerySnapshot;
+
+
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.TextWatcher;
 
 import com.google.firebase.firestore.FirebaseFirestore;
-import java.util.HashMap;
-import java.util.Map;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
-
-import android.widget.Spinner;
-import android.widget.ArrayAdapter;
-import java.util.ArrayList;
-
+import android.os.Handler;
+import android.os.Looper;
 
 import java.io.File;
-import java.io.FileWriter;
-
-import android.content.Intent;
-import android.net.Uri;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.OutputStream;
-
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
 
+    private static final String CSV_HEADER =
+            "cedula,fecha_nacimiento,apellido1,apellido2,nombre,empresa,persona_visitar,fecha_lectura,hora_lectura\n";
     private FirebaseFirestore db;
 
-    private EditText txtCedula, txtFecha, txtApellido1, txtApellido2, txtNombre, txtFechaRegistro, txtHoraRegistro;
-    private Button btnGuardar, btnLimpiar, btnSalir, btnMenu;
-
-    private Spinner spnPersonaVisitable;
-    private final ArrayList<String> personasIds = new ArrayList<>();
-    private final ArrayList<String> personasNombres = new ArrayList<>();
+    private EditText txtCedula, txtFecha, txtApellido1, txtApellido2, txtNombre;
+    private EditText txtEmpresa, txtPersonaVisitar, txtFechaRegistro, txtHoraRegistro;
+    private Button btnGuardar, btnLimpiar, btnSalir, btnMenu, btnModoManual;
 
     private final StringBuilder bufferOCR = new StringBuilder();
 
+    private boolean modoManual = false;
+    private boolean editandoFecha = false;
+    private boolean editandoTexto = false;
+
     private static final int REQUEST_EXPORTAR_CSV = 1001;
+    private static final int REQUEST_EXPORTAR_XLS = 1002;
+
+
+    private static final String ORGANIZACION_ID = "dmr";
+    private static final String DISPOSITIVO = "tablet-ocr-01";
+
+
+
+    private final Handler relojHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable relojRunnable = new Runnable() {
+        @Override
+        public void run() {
+            actualizarFechaHora();
+            relojHandler.postDelayed(this, 1000);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +93,8 @@ public class MainActivity extends AppCompatActivity {
         txtApellido1 = findViewById(R.id.txtApellido1);
         txtApellido2 = findViewById(R.id.txtApellido2);
         txtNombre = findViewById(R.id.txtNombre);
+        txtEmpresa = findViewById(R.id.txtEmpresa);
+        txtPersonaVisitar = findViewById(R.id.txtPersonaVisitar);
         txtFechaRegistro = findViewById(R.id.txtFechaRegistro);
         txtHoraRegistro = findViewById(R.id.txtHoraRegistro);
 
@@ -69,21 +102,95 @@ public class MainActivity extends AppCompatActivity {
         btnLimpiar = findViewById(R.id.btnLimpiar);
         btnSalir = findViewById(R.id.btnSalir);
         btnMenu = findViewById(R.id.btnMenu);
+        btnModoManual = findViewById(R.id.btnModoManual);
 
-        spnPersonaVisitable = findViewById(R.id.spnPersonaVisitable);
-        cargarPersonasVisitables();
-
+        setCamposOcrEditables(false);
         actualizarFechaHora();
 
-        btnGuardar.setOnClickListener(v -> guardarCSV());
+        btnGuardar.setOnClickListener(v -> mostrarConfirmacionGuardar());
         btnLimpiar.setOnClickListener(v -> limpiarCampos());
         btnSalir.setOnClickListener(v -> finish());
-
         btnMenu.setOnClickListener(v -> mostrarMenuConfiguracion());
+
+        configurarLimitesCampos();
+        configurarMascaraFecha();
+        configurarCapitalizacionManual();
+
+
+        btnModoManual.setOnClickListener(v -> alternarModoManual());
+        activarModoOCR();
+
+        relojHandler.post(relojRunnable);
+
     }
+
+    private void configurarCapitalizacionManual() {
+        aplicarCapitalizacion(txtNombre);
+        aplicarCapitalizacion(txtApellido1);
+        aplicarCapitalizacion(txtApellido2);
+        aplicarCapitalizacion(txtPersonaVisitar);
+    }
+
+    private void aplicarCapitalizacion(EditText campo) {
+        campo.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (editandoTexto) return;
+
+                editandoTexto = true;
+
+                String texto = s.toString();
+                String formateado = capitalizarPalabras(texto);
+
+                if (!texto.equals(formateado)) {
+                    campo.setText(formateado);
+                    campo.setSelection(campo.getText().length());
+                }
+
+                editandoTexto = false;
+            }
+        });
+    }
+
+
+    private String capitalizarPalabras(String texto) {
+        texto = texto.toLowerCase(Locale.ROOT);
+
+        StringBuilder resultado = new StringBuilder();
+        boolean nuevaPalabra = true;
+
+        for (int i = 0; i < texto.length(); i++) {
+            char c = texto.charAt(i);
+
+            if (Character.isLetter(c)) {
+                if (nuevaPalabra) {
+                    resultado.append(Character.toUpperCase(c));
+                    nuevaPalabra = false;
+                } else {
+                    resultado.append(c);
+                }
+            } else {
+                resultado.append(c);
+                nuevaPalabra = c == ' ';
+            }
+        }
+
+        return resultado.toString();
+    }
+
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (modoManual) {
+            return super.dispatchKeyEvent(event);
+        }
+
         if (event.getAction() != KeyEvent.ACTION_UP) return super.dispatchKeyEvent(event);
 
         int keyCode = event.getKeyCode();
@@ -110,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void procesarLectura(String lectura) {
         limpiarCamposSinMensaje();
+        setCamposOcrEditables(false);
 
         String[] partes = lectura.split("\\t");
 
@@ -121,25 +229,149 @@ public class MainActivity extends AppCompatActivity {
             txtNombre.setText(capitalizar(partes[4].trim()));
             actualizarFechaHora();
 
-            Toast.makeText(this, "Lectura procesada", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Lectura OCR procesada", Toast.LENGTH_SHORT).show();
         } else {
-            Toast.makeText(this, "Formato incompleto: " + lectura, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Formato OCR incompleto. Puede usar modo manual.", Toast.LENGTH_LONG).show();
         }
     }
+
+
+    private void alternarModoManual() {
+        if (modoManual) {
+            activarModoOCR();
+        } else {
+            activarModoManual();
+        }
+    }
+
+    private void activarModoManual() {
+        modoManual = true;
+        bufferOCR.setLength(0);
+
+        setCamposOcrEditables(true);
+
+        txtEmpresa.setEnabled(true);
+        txtPersonaVisitar.setEnabled(true);
+
+        btnModoManual.setText("Volver a modo OCR");
+        btnModoManual.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#374151")));
+
+        actualizarFechaHora();
+        txtCedula.requestFocus();
+
+        Toast.makeText(this, "Modo manual activo", Toast.LENGTH_SHORT).show();
+    }
+
+    private void activarModoOCR() {
+        modoManual = false;
+        bufferOCR.setLength(0);
+
+        setCamposOcrEditables(false);
+
+        txtEmpresa.setEnabled(true);
+        txtPersonaVisitar.setEnabled(true);
+
+        btnModoManual.setText("Modo manual");
+        btnModoManual.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#6B7280")));
+
+        actualizarFechaHora();
+        txtCedula.requestFocus();
+
+        Toast.makeText(this, "Modo OCR activo", Toast.LENGTH_SHORT).show();
+    }
+
+
+    private void setCamposOcrEditables(boolean editable) {
+        txtCedula.setEnabled(editable);
+        txtFecha.setEnabled(editable);
+        txtApellido1.setEnabled(editable);
+        txtApellido2.setEnabled(editable);
+        txtNombre.setEnabled(editable);
+    }
+
+    private void mostrarConfirmacionGuardar() {
+        if (!validarDatos()) return;
+
+        String mensaje =
+                "Cédula: " + valor(txtCedula) + "\n" +
+                        "Fecha nacimiento: " + valor(txtFecha) + "\n" +
+                        "Apellido 1: " + valor(txtApellido1) + "\n" +
+                        "Apellido 2: " + valor(txtApellido2) + "\n" +
+                        "Nombre: " + valor(txtNombre) + "\n" +
+                        "Empresa: " + valor(txtEmpresa) + "\n" +
+                        "Persona a visitar: " + valor(txtPersonaVisitar) + "\n" +
+                        "Fecha lectura: " + valor(txtFechaRegistro) + "\n" +
+                        "Hora lectura: " + valor(txtHoraRegistro);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Confirmar datos")
+                .setMessage(mensaje)
+                .setPositiveButton("Confirmar", (dialog, which) -> guardarCSV())
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private boolean validarDatos() {
+        if (valor(txtCedula).isEmpty()) {
+            Toast.makeText(this, "Ingrese cédula", Toast.LENGTH_SHORT).show();
+            txtCedula.requestFocus();
+            return false;
+        }
+
+        if (!fechaNacimientoValida(valor(txtFecha))) {
+            Toast.makeText(this, "Fecha nacimiento inválida. Use dd/MM/yyyy", Toast.LENGTH_LONG).show();
+            txtFecha.requestFocus();
+            return false;
+        }
+
+        if (valor(txtNombre).isEmpty()) {
+            Toast.makeText(this, "Ingrese nombre", Toast.LENGTH_SHORT).show();
+            txtNombre.requestFocus();
+            return false;
+        }
+
+        if (valor(txtEmpresa).isEmpty()) {
+            Toast.makeText(this, "Ingrese empresa", Toast.LENGTH_SHORT).show();
+            txtEmpresa.requestFocus();
+            return false;
+        }
+
+        if (valor(txtPersonaVisitar).isEmpty()) {
+            Toast.makeText(this, "Ingrese persona a visitar", Toast.LENGTH_SHORT).show();
+            txtPersonaVisitar.requestFocus();
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean fechaNacimientoValida(String fecha) {
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
+            sdf.setLenient(false);
+
+            Date fechaNac = sdf.parse(fecha);
+            Date hoy = new Date();
+
+            Calendar cal = Calendar.getInstance();
+            int anioActual = cal.get(Calendar.YEAR);
+
+            Calendar calNac = Calendar.getInstance();
+            calNac.setTime(fechaNac);
+            int anioNac = calNac.get(Calendar.YEAR);
+
+            if (anioNac < 1900) return false;
+            if (anioNac > anioActual) return false;
+            if (fechaNac.after(hoy)) return false;
+
+            return true;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void guardarCSV() {
-        if (txtCedula.getText().toString().trim().isEmpty()) {
-            bufferOCR.setLength(0);
-            Toast.makeText(this, "No hay datos para guardar", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-
-        if (spnPersonaVisitable.getSelectedItemPosition() == 0) {
-            Toast.makeText(this, "Seleccione persona a visitar", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-
         try {
             File dir = new File(getExternalFilesDir(null), "export");
             if (!dir.exists()) dir.mkdirs();
@@ -150,17 +382,20 @@ public class MainActivity extends AppCompatActivity {
             FileWriter fw = new FileWriter(archivo, true);
 
             if (nuevo) {
-                fw.write("cedula,fecha_nacimiento,apellido1,apellido2,nombre,fecha_lectura,hora_lectura\n");
+
+                fw.write(CSV_HEADER);
             }
 
             fw.write(
-                    limpiarCSV(txtCedula.getText().toString()) + "," +
-                            limpiarCSV(txtFecha.getText().toString()) + "," +
-                            limpiarCSV(txtApellido1.getText().toString()) + "," +
-                            limpiarCSV(txtApellido2.getText().toString()) + "," +
-                            limpiarCSV(txtNombre.getText().toString()) + "," +
-                            limpiarCSV(txtFechaRegistro.getText().toString()) + "," +
-                            limpiarCSV(txtHoraRegistro.getText().toString()) + "\n"
+                    limpiarCSV(valor(txtCedula)) + "," +
+                            limpiarCSV(valor(txtFecha)) + "," +
+                            limpiarCSV(valor(txtApellido1)) + "," +
+                            limpiarCSV(valor(txtApellido2)) + "," +
+                            limpiarCSV(valor(txtNombre)) + "," +
+                            limpiarCSV(valor(txtEmpresa)) + "," +
+                            limpiarCSV(valor(txtPersonaVisitar)) + "," +
+                            limpiarCSV(valor(txtFechaRegistro)) + "," +
+                            limpiarCSV(valor(txtHoraRegistro)) + "\n"
             );
 
             fw.close();
@@ -170,8 +405,9 @@ public class MainActivity extends AppCompatActivity {
             bufferOCR.setLength(0);
             limpiarCamposSinMensaje();
 
-            Toast.makeText(this, "Datos guardados", Toast.LENGTH_SHORT).show();
+            activarModoOCR();
 
+            Toast.makeText(this, "Datos guardados", Toast.LENGTH_SHORT).show();
 
         } catch (Exception e) {
             Toast.makeText(this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -181,44 +417,27 @@ public class MainActivity extends AppCompatActivity {
     private void guardarFirebase() {
         Map<String, Object> visita = new HashMap<>();
 
-        String nombreCompleto = txtNombre.getText().toString().trim();
-        String apellidoCompleto = (
-                txtApellido1.getText().toString().trim() + " " +
-                        txtApellido2.getText().toString().trim()
-        ).trim();
-
+        String nombreCompleto = valor(txtNombre);
+        String apellidoCompleto = (valor(txtApellido1) + " " + valor(txtApellido2)).trim();
         String mesAnio = new SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(new Date());
 
         visita.put("visitanteNombre", nombreCompleto);
         visita.put("visitanteApellido", apellidoCompleto);
-        visita.put("visitanteCedula", txtCedula.getText().toString().trim());
-        visita.put("visitanteFechaNacimiento", txtFecha.getText().toString().trim());
+        visita.put("visitanteCedula", valor(txtCedula));
+        visita.put("visitanteFechaNacimiento", valor(txtFecha));
 
-        visita.put("fechaLectura", txtFechaRegistro.getText().toString().trim());
-        visita.put("horaLectura", txtHoraRegistro.getText().toString().trim());
+        visita.put("empresa", valor(txtEmpresa));
+        visita.put("personaVisitableId", "");
+        visita.put("personaVisitableNombre", valor(txtPersonaVisitar));
+
+        visita.put("fechaLectura", valor(txtFechaRegistro));
+        visita.put("horaLectura", valor(txtHoraRegistro));
         visita.put("fecha", new Date());
         visita.put("mesAnio", mesAnio);
 
-        visita.put("organizacionId", "dmr");
-
-        int pos = spnPersonaVisitable.getSelectedItemPosition();
-
-
-        String personaId = "";
-        String personaNombre = "";
-
-        if (pos > 0) {
-            personaId = personasIds.get(pos);
-            personaNombre = personasNombres.get(pos);
-        }
-
-        visita.put("personaVisitableId", personaId);
-        visita.put("personaVisitableNombre", personaNombre);
-
-
-
+        visita.put("organizacionId", ORGANIZACION_ID);
         visita.put("origen", "OCR Honeywell");
-        visita.put("dispositivo", "tablet-ocr-01");
+        visita.put("dispositivo", DISPOSITIVO);
 
         db.collection("visitas")
                 .add(visita)
@@ -233,17 +452,239 @@ public class MainActivity extends AppCompatActivity {
     private void mostrarMenuConfiguracion() {
         new AlertDialog.Builder(this)
                 .setTitle("Configuración")
-                .setItems(new CharSequence[]{"Exportar a Downloads", "Elegir ubicación", "Vaciar lote interno"}, (dialog, which) -> {
+                .setItems(new CharSequence[]{
+                        "Ver visitas de hoy",
+                        "Exportar / Guardar",
+                        "Vaciar lecturas locales"
+                }, (dialog, which) -> {
                     if (which == 0) {
-                        exportarDatosDownloads();
+                        consultarVisitasHoy();
                     } else if (which == 1) {
-                        elegirUbicacionExportacion();
+                        mostrarMenuExportacion();
                     } else {
                         confirmarVaciarLote();
                     }
                 })
                 .setNegativeButton("Cerrar", null)
                 .show();
+    }
+
+
+    private void mostrarMenuExportacion() {
+        new AlertDialog.Builder(this)
+                .setTitle("Exportar / Guardar")
+                .setItems(new CharSequence[]{
+                        "Restaurar lote local desde Firebase",
+                        "Exportar Excel a Downloads",
+                        "Elegir ubicación XLS"
+                }, (dialog, which) -> {
+                    if (which == 0) {
+                        restaurarLoteHoyDesdeFirebase();
+                    } else if (which == 1) {
+                        exportarExcelDownloads();
+                    } else {
+                        elegirUbicacionExportacionXls();
+                    }
+                })
+                .setNegativeButton("Cerrar", null)
+                .show();
+    }
+
+    private void restaurarLoteHoyDesdeFirebase() {
+        Calendar inicio = Calendar.getInstance();
+        inicio.set(Calendar.HOUR_OF_DAY, 0);
+        inicio.set(Calendar.MINUTE, 0);
+        inicio.set(Calendar.SECOND, 0);
+        inicio.set(Calendar.MILLISECOND, 0);
+
+        Calendar fin = Calendar.getInstance();
+        fin.set(Calendar.HOUR_OF_DAY, 23);
+        fin.set(Calendar.MINUTE, 59);
+        fin.set(Calendar.SECOND, 59);
+        fin.set(Calendar.MILLISECOND, 999);
+
+        db.collection("visitas")
+                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
+                .whereLessThanOrEqualTo("fecha", fin.getTime())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    try {
+                        File dir = new File(getExternalFilesDir(null), "export");
+                        if (!dir.exists()) dir.mkdirs();
+
+                        File archivo = new File(dir, "datos_ocr.csv");
+                        FileWriter fw = new FileWriter(archivo, false);
+
+                        fw.write(CSV_HEADER);
+
+                        int contador = 0;
+
+                        for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                            fw.write(
+                                    limpiarCSV(safe(doc.getString("visitanteCedula"))) + "," +
+                                            limpiarCSV(safe(doc.getString("visitanteFechaNacimiento"))) + "," +
+                                            limpiarCSV(obtenerApellido1(safe(doc.getString("visitanteApellido")))) + "," +
+                                            limpiarCSV(obtenerApellido2(safe(doc.getString("visitanteApellido")))) + "," +
+                                            limpiarCSV(safe(doc.getString("visitanteNombre"))) + "," +
+                                            limpiarCSV(safe(doc.getString("empresa"))) + "," +
+                                            limpiarCSV(safe(doc.getString("personaVisitableNombre"))) + "," +
+                                            limpiarCSV(safe(doc.getString("fechaLectura"))) + "," +
+                                            limpiarCSV(safe(doc.getString("horaLectura"))) + "\n"
+                            );
+                            contador++;
+                        }
+
+                        fw.close();
+
+                        if (contador == 0) {
+                            Toast.makeText(this, "No hay visitas de hoy en Firebase", Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(this, "Lote restaurado: " + contador + " registros", Toast.LENGTH_LONG).show();
+                        }
+
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Error restaurando lote: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                })
+                .addOnFailureListener(e ->
+                        Toast.makeText(this, "Error Firebase: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
+    }
+
+    private String obtenerApellido1(String apellidoCompleto) {
+        String[] partes = apellidoCompleto.trim().split(" ");
+        return partes.length > 0 ? partes[0] : "";
+    }
+
+    private String obtenerApellido2(String apellidoCompleto) {
+        String[] partes = apellidoCompleto.trim().split(" ");
+        return partes.length > 1 ? partes[1] : "";
+    }
+
+
+    private void consultarVisitasHoy() {
+        Calendar inicio = Calendar.getInstance();
+        inicio.set(Calendar.HOUR_OF_DAY, 0);
+        inicio.set(Calendar.MINUTE, 0);
+        inicio.set(Calendar.SECOND, 0);
+        inicio.set(Calendar.MILLISECOND, 0);
+
+        Calendar fin = Calendar.getInstance();
+        fin.set(Calendar.HOUR_OF_DAY, 23);
+        fin.set(Calendar.MINUTE, 59);
+        fin.set(Calendar.SECOND, 59);
+        fin.set(Calendar.MILLISECOND, 999);
+
+        db.collection("visitas")
+                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
+                .whereLessThanOrEqualTo("fecha", fin.getTime())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+
+                    LinearLayout contenedor = new LinearLayout(this);
+                    contenedor.setOrientation(LinearLayout.VERTICAL);
+                    contenedor.setPadding(12, 12, 12, 12);
+
+                    TextView titulo = new TextView(this);
+                    titulo.setText("Registros del día");
+                    titulo.setTextSize(18);
+                    titulo.setTextColor(Color.BLACK);
+                    titulo.setGravity(Gravity.CENTER);
+                    titulo.setPadding(0, 0, 0, 16);
+                    contenedor.addView(titulo);
+
+                    if (queryDocumentSnapshots.isEmpty()) {
+                        TextView sinDatos = new TextView(this);
+                        sinDatos.setText("Sin lecturas registradas para el día de hoy.");
+                        sinDatos.setTextSize(16);
+                        sinDatos.setTextColor(Color.DKGRAY);
+                        sinDatos.setGravity(Gravity.CENTER);
+                        sinDatos.setPadding(20, 40, 20, 40);
+                        contenedor.addView(sinDatos);
+
+                        new AlertDialog.Builder(this)
+                                .setTitle("Visitas de hoy")
+                                .setView(contenedor)
+                                .setPositiveButton("Aceptar", null)
+                                .show();
+
+                        return;
+                    }
+
+                    TableLayout tabla = new TableLayout(this);
+                    tabla.setStretchAllColumns(false);
+                    tabla.setShrinkAllColumns(false);
+
+                    TableRow encabezado = new TableRow(this);
+                    encabezado.setBackgroundColor(Color.parseColor("#E5E7EB"));
+
+                    encabezado.addView(crearCelda("Hora", true));
+                    encabezado.addView(crearCelda("Cédula", true));
+                    encabezado.addView(crearCelda("Nombre", true));
+                    encabezado.addView(crearCelda("Apellido", true));
+                    encabezado.addView(crearCelda("Empresa", true));
+                    encabezado.addView(crearCelda("Visita a", true));
+
+                    tabla.addView(encabezado);
+
+                    for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                        String hora = safe(doc.getString("horaLectura"));
+                        String cedula = safe(doc.getString("visitanteCedula"));
+                        String nombre = safe(doc.getString("visitanteNombre"));
+                        String apellido = safe(doc.getString("visitanteApellido"));
+                        String empresa = safe(doc.getString("empresa"));
+                        String persona = safe(doc.getString("personaVisitableNombre"));
+
+                        TableRow fila = new TableRow(this);
+
+                        fila.addView(crearCelda(hora, false));
+                        fila.addView(crearCelda(cedula, false));
+                        fila.addView(crearCelda(nombre, false));
+                        fila.addView(crearCelda(apellido, false));
+                        fila.addView(crearCelda(empresa, false));
+                        fila.addView(crearCelda(persona, false));
+
+                        tabla.addView(fila);
+                    }
+
+                    HorizontalScrollView scrollHorizontal = new HorizontalScrollView(this);
+                    scrollHorizontal.addView(tabla);
+
+                    contenedor.addView(scrollHorizontal);
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("Visitas de hoy")
+                            .setView(contenedor)
+                            .setPositiveButton("Aceptar", null)
+                            .show();
+                })
+                .addOnFailureListener(e ->
+                        Toast.makeText(this, "Error consultando visitas: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
+    }
+
+
+    private TextView crearCelda(String texto, boolean encabezado) {
+        TextView celda = new TextView(this);
+
+
+        celda.setText(texto);
+        celda.setTextSize(encabezado ? 14 : 13);
+        celda.setTextColor(Color.BLACK);
+        celda.setPadding(16, 12, 16, 12);
+        celda.setMinWidth(160);
+        celda.setGravity(Gravity.CENTER_VERTICAL);
+
+        if (encabezado) {
+            celda.setTypeface(null, android.graphics.Typeface.BOLD);
+            celda.setBackgroundColor(Color.parseColor("#E5E7EB"));
+        } else {
+            celda.setBackgroundColor(Color.WHITE);
+        }
+
+        return celda;
     }
 
     private void exportarDatosDownloads() {
@@ -274,12 +715,10 @@ public class MainActivity extends AppCompatActivity {
 
             Toast.makeText(this, "Copia creada en: " + destino.getAbsolutePath(), Toast.LENGTH_LONG).show();
 
-
         } catch (Throwable e) {
             Toast.makeText(this, "Error exportando: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
-
 
     private void elegirUbicacionExportacion() {
         String fechaHora = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
@@ -296,9 +735,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == REQUEST_EXPORTAR_CSV && resultCode == RESULT_OK && data != null) {
+        if (resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
-            exportarAUri(uri);
+
+            if (requestCode == REQUEST_EXPORTAR_CSV) {
+                exportarAUri(uri);
+            } else if (requestCode == REQUEST_EXPORTAR_XLS) {
+                exportarExcelAUri(uri);
+            }
         }
     }
 
@@ -326,8 +770,6 @@ public class MainActivity extends AppCompatActivity {
 
             Toast.makeText(this, "CSV exportado correctamente", Toast.LENGTH_LONG).show();
 
-
-
         } catch (Throwable e) {
             Toast.makeText(this, "Error al exportar: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -351,6 +793,11 @@ public class MainActivity extends AppCompatActivity {
     private void limpiarCampos() {
         bufferOCR.setLength(0);
         limpiarCamposSinMensaje();
+
+
+        activarModoOCR();
+
+
         txtCedula.requestFocus();
         Toast.makeText(this, "Campos limpios", Toast.LENGTH_SHORT).show();
     }
@@ -361,10 +808,9 @@ public class MainActivity extends AppCompatActivity {
         txtApellido1.setText("");
         txtApellido2.setText("");
         txtNombre.setText("");
+        txtEmpresa.setText("");
+        txtPersonaVisitar.setText("");
         actualizarFechaHora();
-
-        spnPersonaVisitable.setSelection(0);
-
         txtCedula.requestFocus();
     }
 
@@ -381,7 +827,18 @@ public class MainActivity extends AppCompatActivity {
             String yy = valor.substring(0, 2);
             String mm = valor.substring(2, 4);
             String dd = valor.substring(4, 6);
-            return dd + "/" + mm + "/" + yy;
+
+            int anioCorto = Integer.parseInt(yy);
+            int anioActualCorto = Calendar.getInstance().get(Calendar.YEAR) % 100;
+
+            int anioCompleto;
+            if (anioCorto > anioActualCorto) {
+                anioCompleto = 1900 + anioCorto;
+            } else {
+                anioCompleto = 2000 + anioCorto;
+            }
+
+            return dd + "/" + mm + "/" + anioCompleto;
         }
 
         if (valor.length() == 8) {
@@ -404,20 +861,21 @@ public class MainActivity extends AppCompatActivity {
         return valor.replace(",", " ").replace("\n", " ").trim();
     }
 
-
     private void vaciarCSVInterno() {
         try {
-            File archivo = new File(getExternalFilesDir(null), "export/datos_ocr.csv");
+            File dir = new File(getExternalFilesDir(null), "export");
+            if (!dir.exists()) dir.mkdirs();
 
-            if (archivo.exists()) {
-                FileWriter fw = new FileWriter(archivo, false);
-                fw.write("cedula,fecha_nacimiento,apellido1,apellido2,nombre,fecha_lectura,hora_lectura\n");
-                fw.close();
-            }
-        } catch (Exception ignored) {
+            File archivo = new File(dir, "datos_ocr.csv");
+
+            FileWriter fw = new FileWriter(archivo, false);
+            fw.write(CSV_HEADER);
+            fw.close();
+
+        } catch (Exception e) {
+            Toast.makeText(this, "Error vaciando lote: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
-
 
     private boolean csvTieneDatos(File archivo) {
         try {
@@ -451,50 +909,335 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-
-
-    private void cargarPersonasVisitables() {
-        db.collection("personasVisitable")
-                .whereEqualTo("organizacionId", "organizacion-1")
-                .addSnapshotListener((queryDocumentSnapshots, e) -> {
-                    if (e != null) {
-                        Toast.makeText(this, "Error cargando personas: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                        return;
-                    }
-
-                    personasIds.clear();
-                    personasNombres.clear();
-
-                    personasIds.add("");
-                    personasNombres.add("Seleccione persona a visitar");
-
-                    if (queryDocumentSnapshots != null) {
-                        for (com.google.firebase.firestore.DocumentSnapshot doc : queryDocumentSnapshots) {
-                            String id = doc.getId();
-                            String nombre = doc.getString("nombre");
-                            String apellido = doc.getString("apellido");
-
-                            String nombreCompleto = (
-                                    (nombre != null ? nombre : "") + " " +
-                                            (apellido != null ? apellido : "")
-                            ).trim();
-
-                            personasIds.add(id);
-                            personasNombres.add(nombreCompleto);
-                        }
-                    }
-
-                    ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                            this,
-                            android.R.layout.simple_spinner_item,
-                            personasNombres
-                    );
-
-                    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-                    spnPersonaVisitable.setAdapter(adapter);
-                    spnPersonaVisitable.setSelection(0);
-                });
+    private String valor(EditText editText) {
+        return editText.getText().toString().trim();
     }
 
+    private String safe(String valor) {
+        return valor != null ? valor : "";
+    }
+
+
+    private void configurarLimitesCampos() {
+        txtCedula.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(10)
+        });
+
+        txtFecha.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(10)
+        });
+
+        txtApellido1.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(50),
+                soloLetrasFiltro()
+        });
+
+        txtApellido2.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(50),
+                soloLetrasFiltro()
+        });
+
+        txtNombre.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(50),
+                soloLetrasFiltro()
+        });
+
+        txtEmpresa.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(30)
+        });
+
+        txtPersonaVisitar.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(50),
+                soloLetrasFiltro()
+        });
+    }
+
+    private void configurarMascaraFecha() {
+        txtFecha.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (editandoFecha) return;
+
+                editandoFecha = true;
+
+                String limpio = s.toString().replaceAll("[^0-9]", "");
+
+                if (limpio.length() > 8) {
+                    limpio = limpio.substring(0, 8);
+                }
+
+                // Día
+                if (limpio.length() >= 2) {
+                    int dia = Integer.parseInt(limpio.substring(0, 2));
+                    if (dia < 1 || dia > 31) {
+                        limpio = limpio.substring(0, 1);
+                        Toast.makeText(MainActivity.this, "Día inválido", Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                // Mes
+                if (limpio.length() >= 4) {
+                    int mes = Integer.parseInt(limpio.substring(2, 4));
+                    if (mes < 1 || mes > 12) {
+                        limpio = limpio.substring(0, 3);
+                        Toast.makeText(MainActivity.this, "Mes inválido", Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                // Año completo
+                if (limpio.length() == 8) {
+                    int anio = Integer.parseInt(limpio.substring(4, 8));
+                    int anioActual = Calendar.getInstance().get(Calendar.YEAR);
+
+                    if (anio < 1900 || anio > anioActual) {
+                        limpio = limpio.substring(0, 4);
+                        Toast.makeText(MainActivity.this, "Año inválido", Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                StringBuilder fecha = new StringBuilder();
+
+                for (int i = 0; i < limpio.length(); i++) {
+                    if (i == 2 || i == 4) {
+                        fecha.append("/");
+                    }
+                    fecha.append(limpio.charAt(i));
+                }
+
+                txtFecha.setText(fecha.toString());
+                txtFecha.setSelection(txtFecha.getText().length());
+
+                editandoFecha = false;
+            }
+        });
+    }
+
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        relojHandler.removeCallbacks(relojRunnable);
+    }
+
+
+    private InputFilter soloLetrasFiltro() {
+        return (source, start, end, dest, dstart, dend) -> {
+            for (int i = start; i < end; i++) {
+                char c = source.charAt(i);
+
+                if (!Character.isLetter(c) && c != ' ' && c != 'ñ' && c != 'Ñ') {
+                    return "";
+                }
+            }
+            return null;
+        };
+    }
+
+    private void exportarExcelDownloads() {
+        try {
+            File origen = new File(getExternalFilesDir(null), "export/datos_ocr.csv");
+
+            if (!origen.exists() || !csvTieneDatos(origen)) {
+                Toast.makeText(this, "No hay datos guardados para exportar", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            String fechaHora = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            String nombreArchivo = "datos_ocr_" + fechaHora + ".xls";
+
+            File carpetaDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (!carpetaDownloads.exists()) carpetaDownloads.mkdirs();
+
+            File destino = new File(carpetaDownloads, nombreArchivo);
+
+            String htmlExcel = convertirCsvAExcelHtml(origen);
+
+            FileWriter fw = new FileWriter(destino, false);
+            fw.write(htmlExcel);
+            fw.close();
+
+            MediaScannerConnection.scanFile(
+                    this,
+                    new String[]{destino.getAbsolutePath()},
+                    new String[]{"application/vnd.ms-excel"},
+                    null
+            );
+
+            Toast.makeText(this, "Excel creado en: " + destino.getAbsolutePath(), Toast.LENGTH_LONG).show();
+
+        } catch (Throwable e) {
+            Toast.makeText(this, "Error exportando Excel: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+
+
+    private String convertirCsvAExcelHtml(File archivoCsv) throws Exception {
+        java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(archivoCsv));
+
+        StringBuilder html = new StringBuilder();
+
+        html.append("<html>");
+        html.append("<head>");
+        html.append("<meta charset='UTF-8'>");
+        html.append("</head>");
+        html.append("<body>");
+        html.append("<table border='1'>");
+
+        String linea;
+        boolean encabezado = true;
+
+        while ((linea = br.readLine()) != null) {
+            String[] columnas = linea.split(",", -1);
+
+            html.append("<tr>");
+
+            for (String columna : columnas) {
+                String valor = escaparHtml(columna);
+
+                if (encabezado) {
+                    html.append("<th style='background-color:#D9EAF7;font-weight:bold;'>")
+                            .append(valor)
+                            .append("</th>");
+                } else {
+                    html.append("<td>")
+                            .append(valor)
+                            .append("</td>");
+                }
+            }
+
+            html.append("</tr>");
+            encabezado = false;
+        }
+
+        html.append("</table>");
+        html.append("</body>");
+        html.append("</html>");
+
+        br.close();
+
+        return html.toString();
+    }
+
+    private String escaparHtml(String texto) {
+        if (texto == null) return "";
+
+        return texto
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
+
+
+    private void elegirUbicacionExportacionXls() {
+        String fechaHora = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String nombreArchivo = "datos_ocr_" + fechaHora + ".xls";
+
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/vnd.ms-excel");
+        intent.putExtra(Intent.EXTRA_TITLE, nombreArchivo);
+        startActivityForResult(intent, REQUEST_EXPORTAR_XLS);
+    }
+
+
+    private void exportarExcelAUri(Uri uri) {
+        try {
+            File origen = new File(getExternalFilesDir(null), "export/datos_ocr.csv");
+
+            if (origen.exists() && csvTieneDatos(origen)) {
+                String htmlExcel = convertirCsvAExcelHtml(origen);
+
+                OutputStream salida = getContentResolver().openOutputStream(uri);
+                salida.write(htmlExcel.getBytes("UTF-8"));
+                salida.close();
+
+                Toast.makeText(this, "Excel exportado correctamente", Toast.LENGTH_LONG).show();
+            } else {
+                exportarExcelDesdeFirebaseHoy(uri);
+            }
+
+        } catch (Throwable e) {
+            Toast.makeText(this, "Error al exportar Excel: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void exportarExcelDesdeFirebaseHoy(Uri uri) {
+        Calendar inicio = Calendar.getInstance();
+        inicio.set(Calendar.HOUR_OF_DAY, 0);
+        inicio.set(Calendar.MINUTE, 0);
+        inicio.set(Calendar.SECOND, 0);
+        inicio.set(Calendar.MILLISECOND, 0);
+
+        Calendar fin = Calendar.getInstance();
+        fin.set(Calendar.HOUR_OF_DAY, 23);
+        fin.set(Calendar.MINUTE, 59);
+        fin.set(Calendar.SECOND, 59);
+        fin.set(Calendar.MILLISECOND, 999);
+
+        db.collection("visitas")
+                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
+                .whereLessThanOrEqualTo("fecha", fin.getTime())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    try {
+                        if (queryDocumentSnapshots.isEmpty()) {
+                            Toast.makeText(this, "No hay visitas de hoy en Firebase", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        File archivoLocal = reconstruirCsvLocalDesdeFirebase(queryDocumentSnapshots);
+                        String htmlExcel = convertirCsvAExcelHtml(archivoLocal);
+
+                        OutputStream salida = getContentResolver().openOutputStream(uri);
+                        salida.write(htmlExcel.getBytes("UTF-8"));
+                        salida.close();
+
+                        Toast.makeText(this, "Excel creado desde Firebase y lote local restaurado", Toast.LENGTH_LONG).show();
+
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Error exportando desde Firebase: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                })
+                .addOnFailureListener(e ->
+                        Toast.makeText(this, "Error Firebase: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
+    }
+
+
+    private File reconstruirCsvLocalDesdeFirebase(QuerySnapshot queryDocumentSnapshots) throws Exception {
+        File dir = new File(getExternalFilesDir(null), "export");
+        if (!dir.exists()) dir.mkdirs();
+
+        File archivo = new File(dir, "datos_ocr.csv");
+        FileWriter fw = new FileWriter(archivo, false);
+
+        fw.write(CSV_HEADER);
+
+        for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+            fw.write(
+                    limpiarCSV(safe(doc.getString("visitanteCedula"))) + "," +
+                            limpiarCSV(safe(doc.getString("visitanteFechaNacimiento"))) + "," +
+                            limpiarCSV(obtenerApellido1(safe(doc.getString("visitanteApellido")))) + "," +
+                            limpiarCSV(obtenerApellido2(safe(doc.getString("visitanteApellido")))) + "," +
+                            limpiarCSV(safe(doc.getString("visitanteNombre"))) + "," +
+                            limpiarCSV(safe(doc.getString("empresa"))) + "," +
+                            limpiarCSV(safe(doc.getString("personaVisitableNombre"))) + "," +
+                            limpiarCSV(safe(doc.getString("fechaLectura"))) + "," +
+                            limpiarCSV(safe(doc.getString("horaLectura"))) + "\n"
+            );
+        }
+
+        fw.close();
+        return archivo;
+    }
 
 }
