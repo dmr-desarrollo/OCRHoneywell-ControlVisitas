@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Control de Visitas"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Iniciar sesión"
+            android:textSize="18sp"
+            android:layout_marginBottom="32dp" />
+
+        <EditText
+            android:id="@+id/txtEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Correo electrónico"
+            android:inputType="textEmailAddress"
+            android:singleLine="true"
+            android:layout_marginBottom="16dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <EditText
+                android:id="@+id/txtPassword"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Contraseña"
+                android:inputType="textPassword"
+                android:singleLine="true" />
+
+            <CheckBox
+                android:id="@+id/chkMostrarPassword"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mostrar" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txtOlvidePassword"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="¿Olvidaste tu contraseña?"
+            android:textColor="#2563EB"
+            android:textStyle="bold"
+            android:padding="8dp"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnIngresar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ingresar" />
+
+        <Button
+            android:id="@+id/btnCerrarApp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cerrar aplicación"
+            android:layout_marginTop="12dp" />
+
+        <ProgressBar
+            android:id="@+id/progressLogin"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_marginTop="20dp" />
+
+    </LinearLayout>
+
+</ScrollView>

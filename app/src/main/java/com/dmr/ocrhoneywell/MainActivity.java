@@ -21,7 +21,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.firebase.firestore.QuerySnapshot;
-
+import com.google.firebase.auth.FirebaseAuth;
 
 import android.text.Editable;
 import android.text.InputFilter;
@@ -52,6 +52,17 @@ public class MainActivity extends AppCompatActivity {
             "cedula,fecha_nacimiento,apellido1,apellido2,nombre,empresa,persona_visitar,fecha_lectura,hora_lectura\n";
     private FirebaseFirestore db;
 
+
+    private String usuarioUid = "";
+    private String usuarioNombre = "";
+    private String usuarioRol = "";
+    private String empresaId = "";
+    private String empresaNombre = "";
+
+    private String usuarioApellido = "";
+    private TextView txtUsuarioLogueado;
+    private TextView txtRolUsuario;
+
     private EditText txtCedula, txtFecha, txtApellido1, txtApellido2, txtNombre;
     private EditText txtEmpresa, txtPersonaVisitar, txtFechaRegistro, txtHoraRegistro;
     private Button btnGuardar, btnLimpiar, btnSalir, btnMenu, btnModoManual;
@@ -66,7 +77,6 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_EXPORTAR_XLS = 1002;
 
 
-    private static final String ORGANIZACION_ID = "dmr";
     private static final String DISPOSITIVO = "tablet-ocr-01";
 
 
@@ -88,6 +98,64 @@ public class MainActivity extends AppCompatActivity {
 
         db = FirebaseFirestore.getInstance();
 
+
+        usuarioUid = getIntent().getStringExtra("uid");
+        usuarioNombre = getIntent().getStringExtra("nombreUsuario");
+
+        usuarioApellido =
+                getIntent()
+                        .getStringExtra(
+                                "apellidoUsuario"
+                        );
+
+
+        usuarioRol = getIntent().getStringExtra("rol");
+        empresaId = getIntent().getStringExtra("empresaId");
+        empresaNombre = getIntent().getStringExtra("empresaNombre");
+
+        if (usuarioUid == null) usuarioUid = "";
+        if (usuarioNombre == null) usuarioNombre = "";
+
+        if (usuarioApellido == null) {
+            usuarioApellido = "";
+        }
+
+        if (usuarioRol == null) usuarioRol = "";
+        if (empresaId == null) empresaId = "";
+        if (empresaNombre == null) empresaNombre = "";
+
+        /*
+         * SEGURIDAD MULTIEMPRESA
+         *
+         * MainActivity nunca debe trabajar sin una empresa asignada.
+         * LoginActivity ya valida este dato, pero repetimos la comprobación
+         * aquí para evitar escrituras o consultas sin contexto empresarial.
+         */
+        if (empresaId.trim().isEmpty()) {
+            Toast.makeText(
+                    this,
+                    "No se pudo identificar la empresa del usuario.",
+                    Toast.LENGTH_LONG
+            ).show();
+
+            FirebaseAuth.getInstance().signOut();
+
+            Intent intent = new Intent(
+                    MainActivity.this,
+                    LoginActivity.class
+            );
+
+            intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                            | Intent.FLAG_ACTIVITY_CLEAR_TASK
+            );
+
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+
         txtCedula = findViewById(R.id.txtCedula);
         txtFecha = findViewById(R.id.txtFecha);
         txtApellido1 = findViewById(R.id.txtApellido1);
@@ -102,6 +170,60 @@ public class MainActivity extends AppCompatActivity {
         btnLimpiar = findViewById(R.id.btnLimpiar);
         btnSalir = findViewById(R.id.btnSalir);
         btnMenu = findViewById(R.id.btnMenu);
+
+
+        txtUsuarioLogueado =
+                findViewById(
+                        R.id.txtUsuarioLogueado
+                );
+
+        txtRolUsuario =
+                findViewById(
+                        R.id.txtRolUsuario
+                );
+
+        String nombreCompleto =
+                (
+                        usuarioNombre
+                                + " "
+                                + usuarioApellido
+                ).trim();
+
+        if (nombreCompleto.isEmpty()) {
+
+            txtUsuarioLogueado.setText(
+                    "Usuario"
+            );
+
+        } else {
+
+            txtUsuarioLogueado.setText(
+                    nombreCompleto
+            );
+        }
+
+        if ("admin_empresa".equals(usuarioRol)) {
+
+            txtRolUsuario.setText(
+                    "Administrador"
+            );
+
+            btnMenu.setVisibility(
+                    android.view.View.VISIBLE
+            );
+
+        } else {
+
+            txtRolUsuario.setText(
+                    "Usuario"
+            );
+
+            btnMenu.setVisibility(
+                    android.view.View.GONE
+            );
+        }
+
+
         btnModoManual = findViewById(R.id.btnModoManual);
 
         setCamposOcrEditables(false);
@@ -109,7 +231,30 @@ public class MainActivity extends AppCompatActivity {
 
         btnGuardar.setOnClickListener(v -> mostrarConfirmacionGuardar());
         btnLimpiar.setOnClickListener(v -> limpiarCampos());
-        btnSalir.setOnClickListener(v -> finish());
+
+
+        btnSalir.setOnClickListener(v -> {
+
+            FirebaseAuth
+                    .getInstance()
+                    .signOut();
+
+            Intent intent =
+                    new Intent(
+                            MainActivity.this,
+                            LoginActivity.class
+                    );
+
+            intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK
+                            |
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK
+            );
+
+            startActivity(intent);
+        });
+
+
         btnMenu.setOnClickListener(v -> mostrarMenuConfiguracion());
 
         configurarLimitesCampos();
@@ -427,6 +572,10 @@ public class MainActivity extends AppCompatActivity {
         visita.put("visitanteFechaNacimiento", valor(txtFecha));
 
         visita.put("empresa", valor(txtEmpresa));
+
+        if (!empresaNombre.trim().isEmpty()) {
+            visita.put("empresaSistemaNombre", empresaNombre);
+        }
         visita.put("personaVisitableId", "");
         visita.put("personaVisitableNombre", valor(txtPersonaVisitar));
 
@@ -435,7 +584,18 @@ public class MainActivity extends AppCompatActivity {
         visita.put("fecha", new Date());
         visita.put("mesAnio", mesAnio);
 
-        visita.put("organizacionId", ORGANIZACION_ID);
+        /*
+         * MULTIEMPRESA
+         *
+         * empresaId identifica a la empresa dueña de estos datos.
+         * El valor viene del perfil usuarios/{uid} autenticado.
+         *
+         * organizacionId se conserva temporalmente para compatibilidad
+         * con registros/versiones anteriores, pero ya no es un valor fijo.
+         */
+        visita.put("empresaId", empresaId);
+        visita.put("organizacionId", empresaId);
+        visita.put("creadoPorUid", usuarioUid);
         visita.put("origen", "OCR Honeywell");
         visita.put("dispositivo", DISPOSITIVO);
 
@@ -450,6 +610,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void mostrarMenuConfiguracion() {
+        if (!"admin_empresa".equals(usuarioRol)) {
+            Toast.makeText(
+                    this,
+                    "Esta opción está disponible únicamente para administradores.",
+                    Toast.LENGTH_SHORT
+            ).show();
+            return;
+        }
+
         new AlertDialog.Builder(this)
                 .setTitle("Configuración")
                 .setItems(new CharSequence[]{
@@ -504,7 +673,7 @@ public class MainActivity extends AppCompatActivity {
         fin.set(Calendar.MILLISECOND, 999);
 
         db.collection("visitas")
-                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereEqualTo("empresaId", empresaId)
                 .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
                 .whereLessThanOrEqualTo("fecha", fin.getTime())
                 .get()
@@ -577,7 +746,7 @@ public class MainActivity extends AppCompatActivity {
         fin.set(Calendar.MILLISECOND, 999);
 
         db.collection("visitas")
-                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereEqualTo("empresaId", empresaId)
                 .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
                 .whereLessThanOrEqualTo("fecha", fin.getTime())
                 .get()
@@ -1183,7 +1352,7 @@ public class MainActivity extends AppCompatActivity {
         fin.set(Calendar.MILLISECOND, 999);
 
         db.collection("visitas")
-                .whereEqualTo("organizacionId", ORGANIZACION_ID)
+                .whereEqualTo("empresaId", empresaId)
                 .whereGreaterThanOrEqualTo("fecha", inicio.getTime())
                 .whereLessThanOrEqualTo("fecha", fin.getTime())
                 .get()
